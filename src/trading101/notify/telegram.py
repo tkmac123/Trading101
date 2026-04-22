@@ -309,13 +309,79 @@ class TelegramBot:
         )
         await update.message.reply_html(msg)
 
+    # -------- message routing --------
+
+    async def _handle_message(self, update, context):
+        """Handle regular text messages by routing to appropriate features."""
+        if not self._authorized(update.effective_chat.id):
+            return
+
+        text = update.message.text.lower()
+
+        # Route messages based on keywords
+        if any(word in text for word in ["scan", "analyze", "check", "research"]):
+            # Extract ticker if mentioned
+            words = text.split()
+            tickers = [w.upper() for w in words if len(w) <= 5 and w.isalpha()]
+            if tickers:
+                context.args = tickers
+                await self._handle_scan(update, context)
+                return
+            await update.message.reply_text(
+                "💡 Please mention a ticker (or more) to scan. Example: 'analyze NVDA AMD'"
+            )
+            return
+
+        if any(word in text for word in ["alert", "watchlist", "watch"]):
+            await self._handle_alerts(update, context)
+            return
+
+        if any(word in text for word in ["chart", "graph", "price", "technical"]):
+            words = text.split()
+            ticker = next((w.upper() for w in words if len(w) <= 5 and w.isalpha()), None)
+            if ticker:
+                context.args = [ticker]
+                await self._handle_chart(update, context)
+                return
+            await update.message.reply_text("📊 Which ticker do you want to chart? Example: 'chart AAPL'")
+            return
+
+        if any(word in text for word in ["news", "headline", "latest"]):
+            words = text.split()
+            ticker = next((w.upper() for w in words if len(w) <= 5 and w.isalpha()), None)
+            if ticker:
+                context.args = [ticker]
+                await self._handle_news(update, context)
+                return
+            await update.message.reply_text("📰 Which ticker's news do you want? Example: 'news TSLA'")
+            return
+
+        if any(word in text for word in ["stat", "performance", "win", "return"]):
+            await self._handle_stats(update, context)
+            return
+
+        if any(word in text for word in ["help", "command", "what can"]):
+            await self._handle_help(update, context)
+            return
+
+        # Default: show available commands
+        await update.message.reply_html(
+            "👋 I didn't quite understand that. Try:\n\n"
+            "• <code>scan NVDA</code> — analyze a ticker\n"
+            "• <code>alerts</code> — watchlist scan\n"
+            "• <code>chart AAPL</code> — see the chart\n"
+            "• <code>news TSLA</code> — latest headlines\n"
+            "• <code>stats</code> — performance stats\n"
+            "• <code>help</code> — full command list"
+        )
+
     # -------- lifecycle --------
 
     def run(self) -> None:
         """Start polling. Blocks until interrupted."""
         try:
             from telegram.ext import (
-                ApplicationBuilder, CommandHandler,
+                ApplicationBuilder, CommandHandler, MessageHandler, filters,
             )
         except ImportError as exc:
             raise RuntimeError(
@@ -323,6 +389,8 @@ class TelegramBot:
             ) from exc
 
         app = ApplicationBuilder().token(self.token).build()
+
+        # Command handlers (for /command syntax)
         app.add_handler(CommandHandler("start", self._handle_start))
         app.add_handler(CommandHandler("help", self._handle_help))
         app.add_handler(CommandHandler("scan", self._handle_scan))
@@ -330,5 +398,9 @@ class TelegramBot:
         app.add_handler(CommandHandler("chart", self._handle_chart))
         app.add_handler(CommandHandler("news", self._handle_news))
         app.add_handler(CommandHandler("stats", self._handle_stats))
+
+        # Message handler (for regular text messages)
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message))
+
         log.info("Telegram bot starting (polling)…")
         app.run_polling(allowed_updates=["message"])
