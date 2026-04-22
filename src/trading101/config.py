@@ -39,6 +39,7 @@ class Settings:
     polygon_api_key: str | None = None
     alpaca_api_key: str | None = None
     alpaca_api_secret: str | None = None
+    alpaca_base_url: str | None = None  # Override for live trading
     tradier_token: str | None = None
     finnhub_api_key: str | None = None
 
@@ -63,6 +64,7 @@ def load_settings() -> Settings:
         polygon_api_key=os.getenv("POLYGON_API_KEY") or None,
         alpaca_api_key=os.getenv("ALPACA_API_KEY") or None,
         alpaca_api_secret=os.getenv("ALPACA_API_SECRET") or None,
+        alpaca_base_url=os.getenv("ALPACA_BASE_URL") or None,
         tradier_token=os.getenv("TRADIER_TOKEN") or None,
         finnhub_api_key=os.getenv("FINNHUB_API_KEY") or None,
         newsapi_key=os.getenv("NEWSAPI_KEY") or None,

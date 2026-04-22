@@ -14,6 +14,7 @@ from rich.table import Table
 from .alerts import generate_alerts
 from .alerts.models import Confidence
 from .config import configure_logging, load_settings
+from .integrations.alpaca import AlpacaClient
 from .learning import LearningTracker
 
 console = Console()
@@ -172,6 +173,145 @@ def notify(tickers: str | None, min_confidence: str) -> None:
     threshold = Confidence(min_confidence.capitalize())
     sent = send_alerts_to_telegram(alerts, min_confidence=threshold)
     console.print(f"Sent {sent} Telegram message(s).")
+
+
+@main.group(name="alpaca")
+@click.pass_context
+def alpaca_group(ctx: click.Context) -> None:
+    """Alpaca broker integration (paper + live trading)."""
+    settings = ctx.obj["settings"]
+    if not (settings.alpaca_api_key and settings.alpaca_api_secret):
+        console.print("[red]ALPACA_API_KEY and ALPACA_API_SECRET not set.[/red]")
+        sys.exit(1)
+    ctx.obj["alpaca"] = AlpacaClient(
+        api_key=settings.alpaca_api_key,
+        api_secret=settings.alpaca_api_secret,
+        base_url=settings.alpaca_base_url,
+    )
+
+
+@alpaca_group.command(name="account")
+@click.pass_context
+def alpaca_account(ctx: click.Context) -> None:
+    """Show account status (buying power, cash, portfolio value)."""
+    client: AlpacaClient = ctx.obj["alpaca"]
+    acc = client.get_account()
+    if not acc:
+        console.print("[red]Failed to fetch account.[/red]")
+        return
+    mode = "[green]LIVE[/green]" if not acc.is_paper else "[yellow]PAPER[/yellow]"
+    console.print(f"Account Mode: {mode}")
+    table = Table(title="Account Status", show_lines=True)
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", style="magenta")
+    table.add_row("Portfolio Value", f"${acc.portfolio_value:,.2f}")
+    table.add_row("Buying Power", f"${acc.buying_power:,.2f}")
+    table.add_row("Cash", f"${acc.cash:,.2f}")
+    table.add_row("Last Equity", f"${acc.last_equity:,.2f}")
+    console.print(table)
+
+
+@alpaca_group.command(name="positions")
+@click.pass_context
+def alpaca_positions(ctx: click.Context) -> None:
+    """Show all open positions."""
+    client: AlpacaClient = ctx.obj["alpaca"]
+    positions = client.get_positions()
+    if not positions:
+        console.print("[yellow]No open positions.[/yellow]")
+        return
+    table = Table(title="Open Positions", show_lines=True)
+    for col in ("Symbol", "Qty", "Avg Price", "Current", "P&L", "P&L %"):
+        table.add_column(col)
+    for pos in positions:
+        pl_color = "green" if pos.unrealized_pl >= 0 else "red"
+        table.add_row(
+            pos.symbol,
+            f"{pos.qty:.0f}",
+            f"${pos.avg_fill_price:,.2f}",
+            f"${pos.current_price:,.2f}",
+            f"[{pl_color}]${pos.unrealized_pl:,.2f}[/{pl_color}]",
+            f"[{pl_color}]{pos.unrealized_plpc:+.2f}%[/{pl_color}]",
+        )
+    console.print(table)
+
+
+@alpaca_group.command(name="quote")
+@click.argument("tickers")
+@click.pass_context
+def alpaca_quote(ctx: click.Context, tickers: str) -> None:
+    """Get latest quotes for one or more tickers."""
+    client: AlpacaClient = ctx.obj["alpaca"]
+    symbols = [t.strip().upper() for t in tickers.split(",")]
+    quotes = client.get_quotes(symbols)
+    if not quotes:
+        console.print("[red]Failed to fetch quotes.[/red]")
+        return
+    table = Table(title="Latest Quotes", show_lines=True)
+    table.add_column("Ticker", style="cyan")
+    table.add_column("Price", style="magenta")
+    for sym in symbols:
+        if sym in quotes:
+            table.add_row(sym, f"${quotes[sym]:,.2f}")
+        else:
+            table.add_row(sym, "[red]N/A[/red]")
+    console.print(table)
+
+
+@alpaca_group.command(name="buy")
+@click.argument("symbol")
+@click.argument("qty", type=float)
+@click.option("--limit", type=float, default=None, help="Limit price (omit for market order)")
+@click.option("--confirm", is_flag=True, help="Skip confirmation prompt")
+@click.pass_context
+def alpaca_buy(ctx: click.Context, symbol: str, qty: float, limit: float | None, confirm: bool) -> None:
+    """Place a buy order."""
+    client: AlpacaClient = ctx.obj["alpaca"]
+    symbol = symbol.upper()
+    if not confirm:
+        if limit:
+            console.print(f"[yellow]BUY {qty:.0f} {symbol} @ ${limit:.2f} (LIMIT)[/yellow]")
+        else:
+            console.print(f"[yellow]BUY {qty:.0f} {symbol} (MARKET)[/yellow]")
+        if not click.confirm("Continue?"):
+            return
+    if limit:
+        order = client.place_limit_order(symbol, qty, "buy", limit)
+    else:
+        order = client.place_market_order(symbol, qty, "buy")
+    if not order:
+        console.print("[red]Order failed.[/red]")
+        return
+    console.print(f"[green]Order placed: {order.id}[/green]")
+    console.print(f"Status: {order.status}")
+
+
+@alpaca_group.command(name="sell")
+@click.argument("symbol")
+@click.argument("qty", type=float)
+@click.option("--limit", type=float, default=None, help="Limit price (omit for market order)")
+@click.option("--confirm", is_flag=True, help="Skip confirmation prompt")
+@click.pass_context
+def alpaca_sell(ctx: click.Context, symbol: str, qty: float, limit: float | None, confirm: bool) -> None:
+    """Place a sell order."""
+    client: AlpacaClient = ctx.obj["alpaca"]
+    symbol = symbol.upper()
+    if not confirm:
+        if limit:
+            console.print(f"[yellow]SELL {qty:.0f} {symbol} @ ${limit:.2f} (LIMIT)[/yellow]")
+        else:
+            console.print(f"[yellow]SELL {qty:.0f} {symbol} (MARKET)[/yellow]")
+        if not click.confirm("Continue?"):
+            return
+    if limit:
+        order = client.place_limit_order(symbol, qty, "sell", limit)
+    else:
+        order = client.place_market_order(symbol, qty, "sell")
+    if not order:
+        console.print("[red]Order failed.[/red]")
+        return
+    console.print(f"[green]Order placed: {order.id}[/green]")
+    console.print(f"Status: {order.status}")
 
 
 if __name__ == "__main__":
