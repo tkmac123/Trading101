@@ -16,6 +16,10 @@ vaderSentiment>=3.3.2
 # Dashboard
 streamlit>=1.32
 plotly>=5.20
+matplotlib>=3.8
+
+# Telegram bot (optional)
+python-telegram-bot>=21.0
 
 # CLI
 click>=8.1

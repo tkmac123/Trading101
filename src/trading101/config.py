@@ -51,6 +51,9 @@ class Settings:
     reddit_user_agent: str = "trading101/0.1"
     stocktwits_token: str | None = None
 
+    telegram_bot_token: str | None = None
+    telegram_chat_id: str | None = None
+
 
 def load_settings() -> Settings:
     return Settings(
@@ -69,6 +72,8 @@ def load_settings() -> Settings:
         reddit_client_secret=os.getenv("REDDIT_CLIENT_SECRET") or None,
         reddit_user_agent=os.getenv("REDDIT_USER_AGENT", "trading101/0.1"),
         stocktwits_token=os.getenv("STOCKTWITS_TOKEN") or None,
+        telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN") or None,
+        telegram_chat_id=os.getenv("TELEGRAM_CHAT_ID") or None,
     )
 
 

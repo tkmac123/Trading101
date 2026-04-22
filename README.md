@@ -65,6 +65,8 @@ trading101 dashboard
 | `trading101 adjust-weights`      | Adjust signal weights from the outcomes ledger                     |
 | `trading101 stats`               | Win rate, avg return, performance broken down by setup type        |
 | `trading101 dashboard`           | Launch the Streamlit dashboard                                     |
+| `trading101 bot`                 | Run the interactive Telegram bot                                   |
+| `trading101 notify`              | One-shot scan → broadcast alerts to your Telegram chat             |
 
 ---
 
@@ -92,6 +94,50 @@ Risk Factors:
   - Already extended +6.4% over 5 days
 Suggested Strategy: Watch for break + hold above $895.10 on volume; entry on retest, stop $864.50, first target $948.00
 Time Horizon: 1-3 days
+```
+
+---
+
+## Telegram bot
+
+Control the agent from your phone. Zero coding needed after setup.
+
+### One-time setup (2 minutes)
+
+1. On Telegram, search for **@BotFather** → send `/newbot` → follow prompts → copy the **HTTP API token**.
+2. Start a chat with your new bot (send it any message, e.g. "hi").
+3. Get your chat ID — open this in a browser:
+   `https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates`
+   Look for `"chat":{"id":123456789,...}` — that number is your chat ID.
+4. Edit `.env`:
+   ```
+   TELEGRAM_BOT_TOKEN=123456:ABC...
+   TELEGRAM_CHAT_ID=123456789
+   ```
+
+### Run the bot
+
+```bash
+trading101 bot
+```
+
+Now on Telegram, chat with your bot:
+
+| Command           | What it does                                             |
+| ----------------- | -------------------------------------------------------- |
+| `/start`          | Welcome + list of commands                               |
+| `/scan NVDA AMD`  | Scan one or more tickers and get full alerts back        |
+| `/alerts`         | Scan your whole default watchlist                        |
+| `/chart TSLA`     | Send a candlestick + RSI chart image                     |
+| `/news AAPL`      | Latest 5 headlines for a ticker                          |
+| `/stats`          | Learning-tracker stats (win rate, weights)               |
+
+### Or just broadcast (no interactive bot)
+
+Pair this with cron to get a morning scan pushed to your phone:
+
+```bash
+trading101 notify --min-confidence High
 ```
 
 ---

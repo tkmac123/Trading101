@@ -136,5 +136,43 @@ def dashboard() -> None:
     subprocess.call(cmd)
 
 
+@main.command()
+def bot() -> None:
+    """Run the interactive Telegram bot (requires TELEGRAM_BOT_TOKEN)."""
+    from .notify import TelegramBot
+    settings = load_settings()
+    if not settings.telegram_bot_token:
+        console.print(
+            "[yellow]TELEGRAM_BOT_TOKEN not set. Follow the setup in .env.example, "
+            "then run `trading101 bot` again.[/yellow]"
+        )
+        return
+    TelegramBot().run()
+
+
+@main.command()
+@click.option("--tickers", "-t", default=None, help="Comma-separated tickers")
+@click.option("--min-confidence", default="Medium", type=click.Choice(["Low", "Medium", "High"], case_sensitive=False))
+def notify(tickers: str | None, min_confidence: str) -> None:
+    """Run a scan and broadcast the results to your Telegram chat."""
+    from .notify import send_alerts_to_telegram
+    from .alerts.models import Confidence
+
+    settings = load_settings()
+    if not (settings.telegram_bot_token and settings.telegram_chat_id):
+        console.print("[yellow]Telegram not configured — set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID.[/yellow]")
+        return
+    universe = (
+        [t.strip().upper() for t in tickers.split(",") if t.strip()]
+        if tickers else settings.universe
+    )
+    tracker = LearningTracker()
+    alerts = generate_alerts(universe, weights=tracker.load_weights())
+    tracker.log_alerts(alerts)
+    threshold = Confidence(min_confidence.capitalize())
+    sent = send_alerts_to_telegram(alerts, min_confidence=threshold)
+    console.print(f"Sent {sent} Telegram message(s).")
+
+
 if __name__ == "__main__":
     main()
