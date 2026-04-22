@@ -219,36 +219,48 @@ class TelegramBot:
             await update.message.reply_text("Usage: /scan NVDA AMD TSLA")
             return
         tickers = [t.upper() for t in args]
-        await update.message.reply_text(f"🔎 Scanning {', '.join(tickers)}…")
-        weights = self.tracker.load_weights()
-        alerts = generate_alerts(tickers, weights=weights, fetch_social=True)
-        self.tracker.log_alerts(alerts)
+        try:
+            await update.message.reply_text(f"🔎 Scanning {', '.join(tickers)}…")
+            weights = self.tracker.load_weights()
+            alerts = generate_alerts(tickers, weights=weights, fetch_social=True)
+            self.tracker.log_alerts(alerts)
 
-        if not alerts:
-            await update.message.reply_text("No setups worth alerting on right now.")
-            return
-        for a in alerts:
-            await update.message.reply_html(_format_alert(a), disable_web_page_preview=True)
+            if not alerts:
+                await update.message.reply_text("No setups worth alerting on right now.")
+                return
+            for a in alerts:
+                await update.message.reply_html(_format_alert(a), disable_web_page_preview=True)
+        except Exception as e:  # noqa: BLE001
+            log.error("Error in scan: %s", e)
+            await update.message.reply_text(
+                f"❌ Error scanning {', '.join(tickers)}: {str(e)[:100]}"
+            )
 
     async def _handle_alerts(self, update, _context):
         if not self._authorized(update.effective_chat.id):
             return
-        settings = load_settings()
-        await update.message.reply_text(
-            f"🔎 Scanning watchlist ({len(settings.universe)} tickers)…"
-        )
-        weights = self.tracker.load_weights()
-        alerts = generate_alerts(settings.universe, weights=weights, fetch_social=True)
-        self.tracker.log_alerts(alerts)
-        high_med = [a for a in alerts if a.confidence.rank >= Confidence.MEDIUM.rank]
-        if not high_med:
-            await update.message.reply_text("No Medium+ alerts — market is quiet.")
-            return
-        await update.message.reply_text(
-            f"Found {len(high_med)} alert(s) at Medium+ confidence."
-        )
-        for a in high_med[:10]:
-            await update.message.reply_html(_format_alert(a), disable_web_page_preview=True)
+        try:
+            settings = load_settings()
+            await update.message.reply_text(
+                f"🔎 Scanning watchlist ({len(settings.universe)} tickers)…"
+            )
+            weights = self.tracker.load_weights()
+            alerts = generate_alerts(settings.universe, weights=weights, fetch_social=True)
+            self.tracker.log_alerts(alerts)
+            high_med = [a for a in alerts if a.confidence.rank >= Confidence.MEDIUM.rank]
+            if not high_med:
+                await update.message.reply_text("No Medium+ alerts — market is quiet.")
+                return
+            await update.message.reply_text(
+                f"Found {len(high_med)} alert(s) at Medium+ confidence."
+            )
+            for a in high_med[:10]:
+                await update.message.reply_html(_format_alert(a), disable_web_page_preview=True)
+        except Exception as e:  # noqa: BLE001
+            log.error("Error in alerts: %s", e)
+            await update.message.reply_text(
+                f"❌ Error scanning watchlist: {str(e)[:100]}"
+            )
 
     async def _handle_chart(self, update, context):
         if not self._authorized(update.effective_chat.id):
@@ -256,23 +268,29 @@ class TelegramBot:
         if not context.args:
             await update.message.reply_text("Usage: /chart NVDA")
             return
-        ticker = context.args[0].upper()
-        await update.message.reply_text(f"📊 Rendering {ticker}…")
-        png = _chart_png(ticker)
-        if png is None:
-            await update.message.reply_text("Could not render chart (missing data or matplotlib).")
-            return
+        try:
+            ticker = context.args[0].upper()
+            await update.message.reply_text(f"📊 Rendering {ticker}…")
+            png = _chart_png(ticker)
+            if png is None:
+                await update.message.reply_text("Could not render chart (missing data or matplotlib).")
+                return
 
-        md = get_market_data(ticker)
-        caption_parts = [f"<b>{_esc(ticker)}</b>"]
-        if md is not None:
-            caption_parts.append(
-                f"${md.last_price:,.2f} ({md.pct_change_today:+.2f}% today) · "
-                f"RelVol {md.relative_volume:.1f}x"
+            md = get_market_data(ticker)
+            caption_parts = [f"<b>{_esc(ticker)}</b>"]
+            if md is not None:
+                caption_parts.append(
+                    f"${md.last_price:,.2f} ({md.pct_change_today:+.2f}% today) · "
+                    f"RelVol {md.relative_volume:.1f}x"
+                )
+            await update.message.reply_photo(
+                photo=png, caption=" — ".join(caption_parts), parse_mode="HTML",
             )
-        await update.message.reply_photo(
-            photo=png, caption=" — ".join(caption_parts), parse_mode="HTML",
-        )
+        except Exception as e:  # noqa: BLE001
+            log.error("Error in chart: %s", e)
+            await update.message.reply_text(
+                f"❌ Error rendering chart: {str(e)[:100]}"
+            )
 
     async def _handle_news(self, update, context):
         if not self._authorized(update.effective_chat.id):
@@ -280,34 +298,46 @@ class TelegramBot:
         if not context.args:
             await update.message.reply_text("Usage: /news AAPL")
             return
-        ticker = context.args[0].upper()
-        items = fetch_ticker_news(ticker, limit=5)
-        if not items:
-            await update.message.reply_text(f"No recent news for {ticker}.")
-            return
-        lines = [f"📰 <b>{_esc(ticker)}</b> — latest headlines:", ""]
-        for n in items:
-            ts = n.published_at.strftime("%m-%d %H:%M")
-            if n.url:
-                lines.append(f"[{ts}] <a href=\"{_esc(n.url)}\">{_esc(n.title)}</a>")
-            else:
-                lines.append(_esc(f"[{ts}] {n.title}"))
-            lines.append("")
-        await update.message.reply_html("\n".join(lines), disable_web_page_preview=True)
+        try:
+            ticker = context.args[0].upper()
+            items = fetch_ticker_news(ticker, limit=5)
+            if not items:
+                await update.message.reply_text(f"No recent news for {ticker}.")
+                return
+            lines = [f"📰 <b>{_esc(ticker)}</b> — latest headlines:", ""]
+            for n in items:
+                ts = n.published_at.strftime("%m-%d %H:%M")
+                if n.url:
+                    lines.append(f"[{ts}] <a href=\"{_esc(n.url)}\">{_esc(n.title)}</a>")
+                else:
+                    lines.append(_esc(f"[{ts}] {n.title}"))
+                lines.append("")
+            await update.message.reply_html("\n".join(lines), disable_web_page_preview=True)
+        except Exception as e:  # noqa: BLE001
+            log.error("Error in news: %s", e)
+            await update.message.reply_text(
+                f"❌ Error fetching news: {str(e)[:100]}"
+            )
 
     async def _handle_stats(self, update, _context):
         if not self._authorized(update.effective_chat.id):
             return
-        s = self.tracker.stats()
-        msg = (
-            f"<b>Learning Tracker</b>\n"
-            f"Alerts logged: {s['alerts_logged']}\n"
-            f"Outcomes graded: {s['outcomes_graded']}\n"
-            f"Win rate: {(s['win_rate'] or 0)*100:.1f}%\n"
-            f"Avg return: {s['avg_return_pct'] or 0:+.2f}%\n\n"
-            f"Weights: {_esc(str(s['current_weights']))}"
-        )
-        await update.message.reply_html(msg)
+        try:
+            s = self.tracker.stats()
+            msg = (
+                f"<b>Learning Tracker</b>\n"
+                f"Alerts logged: {s['alerts_logged']}\n"
+                f"Outcomes graded: {s['outcomes_graded']}\n"
+                f"Win rate: {(s['win_rate'] or 0)*100:.1f}%\n"
+                f"Avg return: {s['avg_return_pct'] or 0:+.2f}%\n\n"
+                f"Weights: {_esc(str(s['current_weights']))}"
+            )
+            await update.message.reply_html(msg)
+        except Exception as e:  # noqa: BLE001
+            log.error("Error in stats: %s", e)
+            await update.message.reply_text(
+                f"❌ Error fetching stats: {str(e)[:100]}"
+            )
 
     # -------- message routing --------
 
@@ -377,6 +407,17 @@ class TelegramBot:
 
     # -------- lifecycle --------
 
+    async def _error_handler(self, update, context):
+        """Log error and notify user if possible."""
+        log.error("Telegram bot error: %s", context.error, exc_info=context.error)
+        if update and update.message:
+            try:
+                await update.message.reply_text(
+                    "⚠️ Oops, something went wrong. Please try again in a moment."
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
     def run(self) -> None:
         """Start polling. Blocks until interrupted."""
         try:
@@ -402,5 +443,14 @@ class TelegramBot:
         # Message handler (for regular text messages)
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message))
 
+        # Error handler
+        app.add_error_handler(self._error_handler)
+
         log.info("Telegram bot starting (polling)…")
-        app.run_polling(allowed_updates=["message"])
+        try:
+            app.run_polling(allowed_updates=["message"])
+        except KeyboardInterrupt:
+            log.info("Telegram bot stopped.")
+        except Exception as e:  # noqa: BLE001
+            log.error("Fatal error in bot: %s", e)
+            raise
