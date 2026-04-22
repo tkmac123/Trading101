@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trading101"
+version = "0.1.0"
+description = "AI-powered short-term trading intelligence agent for the US stock market"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Trading101" }]
+dependencies = [
+    "pandas>=2.1",
+    "numpy>=1.26",
+    "yfinance>=0.2.40",
+    "feedparser>=6.0.11",
+    "requests>=2.31",
+    "beautifulsoup4>=4.12",
+    "vaderSentiment>=3.3.2",
+    "streamlit>=1.32",
+    "plotly>=5.20",
+    "click>=8.1",
+    "rich>=13.7",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+trading101 = "trading101.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
