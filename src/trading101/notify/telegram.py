@@ -344,9 +344,11 @@ class TelegramBot:
     async def _handle_message(self, update, context):
         """Handle regular text messages by routing to appropriate features."""
         if not self._authorized(update.effective_chat.id):
+            log.warning("Unauthorized message from chat %s", update.effective_chat.id)
             return
 
         text = update.message.text.lower()
+        log.debug("Message received: %s", text)
 
         # Route messages based on keywords
         if any(word in text for word in ["scan", "analyze", "check", "research"]):
@@ -447,8 +449,9 @@ class TelegramBot:
         app.add_error_handler(self._error_handler)
 
         log.info("Telegram bot starting (polling)…")
+        log.info("Bot is listening for messages. Send /start or any message to begin.")
         try:
-            app.run_polling(allowed_updates=["message"])
+            app.run_polling(allowed_updates=None)  # None = receive all updates
         except KeyboardInterrupt:
             log.info("Telegram bot stopped.")
         except Exception as e:  # noqa: BLE001
